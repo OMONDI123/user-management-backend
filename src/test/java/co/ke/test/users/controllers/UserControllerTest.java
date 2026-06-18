@@ -8,6 +8,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import java.util.Arrays;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -15,9 +16,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.mock.mockito.MockBean; // Standard for Spring Boot 3.x
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
@@ -34,7 +35,7 @@ import co.ke.test.users.response.UserResponse;
 import co.ke.test.users.services.UserService;
 
 @SpringBootTest
-@AutoConfigureMockMvc 
+@AutoConfigureMockMvc
 @DisplayName("UserController Integration Tests")
 class UserControllerTest {
 
@@ -44,11 +45,15 @@ class UserControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean 
+    @MockBean
     private UserService userService;
 
     private UserModel sampleModel;
     private UserResponse sampleResponse;
+
+    // -----------------------------------------------------------------------
+    // Shared test fixtures
+    // -----------------------------------------------------------------------
 
     @BeforeEach
     void setUp() {
@@ -75,10 +80,15 @@ class UserControllerTest {
         sampleResponse.setStatus(Status.ACTIVE);
     }
 
-  
+    // -----------------------------------------------------------------------
+    // POST /users/createOrUpdateUser
+    // -----------------------------------------------------------------------
+
     @Nested
-    @DisplayName("POST /users")
+    @DisplayName("POST /users/createOrUpdateUser")
     class CreateOrUpdateUser {
+
+        private static final String URL = "/users/createOrUpdateUser";
 
         @Test
         @DisplayName("returns 200 and the saved user when body is valid")
@@ -86,7 +96,7 @@ class UserControllerTest {
             when(userService.createOrUpdateUser(any(UserModel.class)))
                     .thenReturn(ResponseEntity.ok(sampleResponse));
 
-            mockMvc.perform(post("/users")
+            mockMvc.perform(post(URL)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(sampleModel)))
                     .andExpect(status().isOk())
@@ -94,8 +104,9 @@ class UserControllerTest {
                     .andExpect(jsonPath("$.email").value("alice@example.com"))
                     .andExpect(jsonPath("$.firstName").value("Alice"))
                     .andExpect(jsonPath("$.lastName").value("Wanjiru"))
-                    .andExpect(jsonPath("$.role").value("ADMIN"))
-                    .andExpect(jsonPath("$.status").value("ACTIVE"));
+                    // Enums serialize as objects: {"value":"ADMIN","description":"Admin"}
+                    .andExpect(jsonPath("$.role.value").value("ADMIN"))
+                    .andExpect(jsonPath("$.status.value").value("ACTIVE"));
 
             verify(userService, times(1)).createOrUpdateUser(any(UserModel.class));
         }
@@ -106,7 +117,7 @@ class UserControllerTest {
             when(userService.createOrUpdateUser(any(UserModel.class)))
                     .thenReturn(ResponseEntity.status(201).body(sampleResponse));
 
-            mockMvc.perform(post("/users")
+            mockMvc.perform(post(URL)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(sampleModel)))
                     .andExpect(status().isCreated());
@@ -115,7 +126,7 @@ class UserControllerTest {
         @Test
         @DisplayName("returns 415 when Content-Type is not JSON")
         void create_wrongContentType_returns415() throws Exception {
-            mockMvc.perform(post("/users")
+            mockMvc.perform(post(URL)
                             .contentType(MediaType.TEXT_PLAIN)
                             .content("not json"))
                     .andExpect(status().isUnsupportedMediaType());
@@ -129,7 +140,7 @@ class UserControllerTest {
             when(userService.createOrUpdateUser(any(UserModel.class)))
                     .thenReturn(ResponseEntity.ok(sampleResponse));
 
-            mockMvc.perform(post("/users")
+            mockMvc.perform(post(URL)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(sampleModel)))
                     .andExpect(status().isOk());
@@ -146,7 +157,7 @@ class UserControllerTest {
             when(userService.createOrUpdateUser(any(UserModel.class)))
                     .thenReturn(ResponseEntity.ok(sampleResponse));
 
-            mockMvc.perform(post("/users")
+            mockMvc.perform(post(URL)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(sampleModel)))
                     .andExpect(status().isOk())
@@ -154,10 +165,15 @@ class UserControllerTest {
         }
     }
 
-  
+    // -----------------------------------------------------------------------
+    // GET /users/getUsersByStatus
+    // -----------------------------------------------------------------------
+
     @Nested
-    @DisplayName("GET /users")
-    class GetUsers {
+    @DisplayName("GET /users/getUsersByStatus")
+    class GetUsersByStatus {
+
+        private static final String URL = "/users/getUsersByStatus";
 
         @Test
         @DisplayName("returns a paginated result for a valid status")
@@ -166,7 +182,7 @@ class UserControllerTest {
             when(userService.getUsersByStatus(eq(Status.ACTIVE), eq(0), eq(10), isNull()))
                     .thenReturn(page);
 
-            mockMvc.perform(get("/users").param("status", "ACTIVE"))
+            mockMvc.perform(get(URL).param("status", "ACTIVE"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.content").isArray())
                     .andExpect(jsonPath("$.content.length()").value(1))
@@ -181,7 +197,7 @@ class UserControllerTest {
             when(userService.getUsersByStatus(any(), anyInt(), anyInt(), any()))
                     .thenReturn(Page.empty());
 
-            mockMvc.perform(get("/users").param("status", "ACTIVE"))
+            mockMvc.perform(get(URL).param("status", "ACTIVE"))
                     .andExpect(status().isOk());
 
             verify(userService).getUsersByStatus(Status.ACTIVE, 0, 10, null);
@@ -194,12 +210,158 @@ class UserControllerTest {
             when(userService.getUsersByStatus(eq(Status.ACTIVE), eq(1), eq(20), eq("Wanjiru")))
                     .thenReturn(page);
 
-            mockMvc.perform(get("/users")
+            mockMvc.perform(get(URL)
                             .param("status", "ACTIVE")
                             .param("page", "1")
                             .param("size", "20")
-                            .param("search", "Wanjiru"))
+                            .param("searchTerm", "Wanjiru"))
                     .andExpect(status().isOk());
+
+            verify(userService).getUsersByStatus(Status.ACTIVE, 1, 20, "Wanjiru");
+        }
+
+        @Test
+        @DisplayName("returns 400 when required status param is missing")
+        void getUsers_missingStatus_returns400() throws Exception {
+            mockMvc.perform(get(URL))
+                    .andExpect(status().isBadRequest());
+
+            verifyNoInteractions(userService);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // GET /users/getUsersByStatusAndRole
+    // -----------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("GET /users/getUsersByStatusAndRole")
+    class GetUsersByStatusAndRole {
+
+        private static final String URL = "/users/getUsersByStatusAndRole";
+
+        @Test
+        @DisplayName("returns a paginated result for valid status and role")
+        void getUsers_validStatusAndRole_returnsPage() throws Exception {
+            Page<UserResponse> page = new PageImpl<>(List.of(sampleResponse));
+            when(userService.getUsersByStatusAndRole(eq(Status.ACTIVE), eq(Roles.ADMIN), eq(0), eq(10), isNull()))
+                    .thenReturn(page);
+
+            mockMvc.perform(get(URL)
+                            .param("status", "ACTIVE")
+                            .param("role", "ADMIN"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.content").isArray())
+                    .andExpect(jsonPath("$.content.length()").value(1))
+                    .andExpect(jsonPath("$.content[0].email").value("alice@example.com"));
+        }
+
+        @Test
+        @DisplayName("applies default page=0 and size=10 when not specified")
+        void getUsers_defaultPagination_passedToService() throws Exception {
+            when(userService.getUsersByStatusAndRole(any(), any(), anyInt(), anyInt(), any()))
+                    .thenReturn(Page.empty());
+
+            mockMvc.perform(get(URL)
+                            .param("status", "ACTIVE")
+                            .param("role", "ADMIN"))
+                    .andExpect(status().isOk());
+
+            verify(userService).getUsersByStatusAndRole(Status.ACTIVE, Roles.ADMIN, 0, 10, null);
+        }
+
+        @Test
+        @DisplayName("forwards searchTerm to the service")
+        void getUsers_withSearchTerm_forwardedToService() throws Exception {
+            when(userService.getUsersByStatusAndRole(any(), any(), anyInt(), anyInt(), eq("Wanjiru")))
+                    .thenReturn(Page.empty());
+
+            mockMvc.perform(get(URL)
+                            .param("status", "ACTIVE")
+                            .param("role", "ADMIN")
+                            .param("searchTerm", "Wanjiru"))
+                    .andExpect(status().isOk());
+
+            verify(userService).getUsersByStatusAndRole(Status.ACTIVE, Roles.ADMIN, 0, 10, "Wanjiru");
+        }
+
+        @Test
+        @DisplayName("returns 400 when required role param is missing")
+        void getUsers_missingRole_returns400() throws Exception {
+            mockMvc.perform(get(URL).param("status", "ACTIVE"))
+                    .andExpect(status().isBadRequest());
+
+            verifyNoInteractions(userService);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // GET /users/getRoleEnum
+    // Roles serializes as {"value":"ADMIN","description":"Admin"} — assert on .value field
+    // -----------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("GET /users/getRoleEnum")
+    class GetRoleEnum {
+
+        @Test
+        @DisplayName("returns all role values as a JSON array")
+        void getRoleEnum_returnsAllRoles() throws Exception {
+            mockMvc.perform(get("/users/getRoleEnum"))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$").isArray())
+                    .andExpect(jsonPath("$.length()").value(Roles.values().length));
+        }
+
+        @Test
+        @DisplayName("response contains every value declared in the Roles enum")
+        void getRoleEnum_containsEveryDeclaredRole() throws Exception {
+            // Body: [{"value":"ADMIN","description":"Admin"}, ...]
+            var resultActions = mockMvc.perform(get("/users/getRoleEnum"))
+                    .andExpect(status().isOk());
+
+            Roles[] roles = Roles.values();
+            for (int i = 0; i < roles.length; i++) {
+                resultActions
+                        .andExpect(jsonPath("$[" + i + "].value").value(roles[i].getValue()))
+                        .andExpect(jsonPath("$[" + i + "].description").value(roles[i].getDescription()));
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // GET /users/getStatus
+    // Status serializes as {"value":"ACTIVE","description":"Active"} — assert on .value field
+    // -----------------------------------------------------------------------
+
+    @Nested
+    @DisplayName("GET /users/getStatus")
+    class GetStatus {
+
+        @Test
+        @DisplayName("returns all status values as a JSON array")
+        void getStatus_returnsAllStatuses() throws Exception {
+            mockMvc.perform(get("/users/getStatus"))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$").isArray())
+                    .andExpect(jsonPath("$.length()").value(Status.values().length));
+        }
+
+        @Test
+        @DisplayName("response contains every value declared in the Status enum")
+        void getStatus_containsEveryDeclaredStatus() throws Exception {
+            // Body: [{"value":"ACTIVE","description":"Active"}, ...]
+            var resultActions = mockMvc.perform(get("/users/getStatus"))
+                    .andExpect(status().isOk());
+
+            Status[] statuses = Status.values();
+            for (int i = 0; i < statuses.length; i++) {
+                resultActions
+                        .andExpect(jsonPath("$[" + i + "].value").value(statuses[i].getValue()))
+                        .andExpect(jsonPath("$[" + i + "].description").value(statuses[i].getDescription()));
+            }
         }
     }
 }
